@@ -6,16 +6,25 @@ using UnityEngine.Events;
 
 public class playerStats : MonoBehaviour, iDamagable
 {
+    [SerializeField] private UpgradesSTT upgradeManager;
     public float health;
     private float maxHealth;
     public float damage;
-    public Image healthBar;
+    public Image healthBar, healFill;
     public UnityEvent onDeadEvent;
+    private float healTimer;
+
 
     private void Start()
     {
         health += saveManager.Instance.loadCustomFloats("additionalHealth");
         maxHealth = health;
+    }
+
+    private void Update()
+    {
+        healTimer += Time.deltaTime;        
+        healFill.fillAmount = healTimer / 15f;
     }
 
     public void takeDamage(float damage)
@@ -51,6 +60,28 @@ public class playerStats : MonoBehaviour, iDamagable
         fillval = Mathf.Clamp(fillval, 0.2f, 1f);
 
         healthBar.fillAmount = fillval;
+    }
+
+    public void HealComplete()
+    {
+        if (healTimer < 15)
+        {
+            upgradeManager.PerkFail("Heal cooldown not complete");
+            return;
+        }
+
+        health = maxHealth;
+
+        if (health > maxHealth)
+        {
+            health = maxHealth;
+        }
+
+        float fillval = health / maxHealth;
+        fillval = Mathf.Clamp(fillval, 0.2f, 1f);
+
+        healthBar.fillAmount = fillval;
+        healTimer = 0;
     }
 
 }

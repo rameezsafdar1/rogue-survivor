@@ -27,6 +27,15 @@ public class EffectsManager : MonoBehaviour
     public int scene;
     public splash Splash;
 
+    public float frozenDuration;
+    public bool frozen;
+    private float frozenTimer;
+
+    [SerializeField] private UpgradesSTT upgradeManager;
+    public float freezeCoolDown, chaosCoolDown;
+    [SerializeField] private Image freezeCoolFill, chaosCoolFill;
+
+
     private void Start()
     {
         maxXp = userLevel * 10;
@@ -53,8 +62,55 @@ public class EffectsManager : MonoBehaviour
                 currentPooledAudio = 0;
             }
         }
+
+        if (frozen)
+        {
+            frozenTimer += Time.deltaTime;
+            if (frozenTimer >= frozenDuration)
+            {
+                frozenTimer = 0;
+                frozen = false;
+            }
+        }
+
+        freezeCoolDown += Time.deltaTime;
+        freezeCoolFill.fillAmount = freezeCoolDown / 15;
+
+        chaosCoolDown += Time.deltaTime;
+        chaosCoolFill.fillAmount = chaosCoolDown / 15;
+
     }
 
+    public void Freeze()
+    {
+        if (freezeCoolDown < 15)
+        {
+            upgradeManager.PerkFail("Freeze cooldown not complete");
+            return;
+        }
+        frozen = true;
+        frozenTimer = 0;
+        freezeCoolDown = 0;
+    }
+
+    public void Chaos()
+    {
+        if (chaosCoolDown < 15)
+        {
+            upgradeManager.PerkFail("Chaos cooldown not complete");
+            return;
+        }
+        chaosCoolDown = 0;
+        GameObject[] allAgents = GameObject.FindGameObjectsWithTag("Ai");
+        foreach (GameObject agent in allAgents)
+        {
+            boxer behavior = agent.GetComponent<boxer>();
+            if (behavior != null)
+            {
+                behavior.takeDamage(500);
+            }
+        }
+    }
 
     public void changeFov(float value)
     {

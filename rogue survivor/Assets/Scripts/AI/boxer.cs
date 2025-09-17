@@ -16,7 +16,6 @@ public class boxer : BaseAIProperties, iDamagable
     public bodySets[] bodyPartSets;
 
 
-
     public override void Start()
     {
         int currentSet = GameManager.Instance.currentSet;
@@ -48,6 +47,12 @@ public class boxer : BaseAIProperties, iDamagable
 
     private void Update()
     {
+        if (EffectsManager.Instance.frozen)
+        {
+            return;
+        }
+
+
         colorChangeForDamage();
         if (health > 0 && !isHit)
         {
