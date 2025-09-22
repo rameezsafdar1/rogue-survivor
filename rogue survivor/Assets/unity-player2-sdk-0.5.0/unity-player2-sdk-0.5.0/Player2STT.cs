@@ -10,14 +10,12 @@ using Newtonsoft.Json;
 using NativeWebSocket;
 using TMPro;
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-using Player2SDK.WebGL;
-#endif
-
-/// <summary>
-/// WebSocket abstraction for cross-platform compatibility
-/// </summary>
-public interface IWebSocketConnection
+namespace player2_sdk
+{
+    /// <summary>
+    /// WebSocket abstraction for cross-platform compatibility
+    /// </summary>
+    public interface IWebSocketConnection
 {
     WebSocketState State { get; }
     event Action OnOpen;
@@ -32,10 +30,10 @@ public interface IWebSocketConnection
     void DispatchMessageQueue();
 }
 
-/// <summary>
-/// WebSocket implementation for non-WebGL platforms
-/// </summary>
-public class NativeWebSocketConnection : IWebSocketConnection
+    /// <summary>
+    /// WebSocket implementation for non-WebGL platforms
+    /// </summary>
+    public class NativeWebSocketConnection : IWebSocketConnection
 {
     private WebSocket webSocket;
 
@@ -65,13 +63,13 @@ public class NativeWebSocketConnection : IWebSocketConnection
 #else
     public void DispatchMessageQueue() { }
 #endif
-}
+    }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-/// <summary>
-/// WebSocket implementation for WebGL platform
-/// </summary>
-public class WebGLWebSocketConnection : IWebSocketConnection
+    /// <summary>
+    /// WebSocket implementation for WebGL platform
+    /// </summary>
+    public class WebGLWebSocketConnection : IWebSocketConnection
 {
     private WebSocket webSocket;
 
@@ -99,18 +97,17 @@ public class WebGLWebSocketConnection : IWebSocketConnection
 
     // WebGL doesn't need DispatchMessageQueue - browser handles it automatically
     public void DispatchMessageQueue() { }
-}
+    }
 #endif
-
-namespace player2_sdk
-{
     /// <summary>
     /// Real-time Speech-to-Text using WebSocket streaming
     /// </summary>
     public class Player2STT : MonoBehaviour
     {
+        [Header("Custom Variables")]
         [SerializeField] private UpgradesSTT upgradesHandler;
         public TextMeshProUGUI statusText;
+
 
         [Header("STT Configuration")]
         [SerializeField] private bool sttEnabled = true;
@@ -118,6 +115,11 @@ namespace player2_sdk
         [SerializeField] private float heartbeatInterval = 5f;
         [SerializeField] private bool enableVAD = false;
         [SerializeField] private bool enableInterimResults = false;
+        
+        [Header("Reconnection Settings")]
+        [SerializeField] private bool enableAutoReconnection = true;
+        [SerializeField] private int maxReconnectionAttempts = 5;
+        [SerializeField] private float baseReconnectionDelay = 1f;
 
         [Header("Audio Settings")]
         [SerializeField] private int sampleRate = 44100;
@@ -133,6 +135,11 @@ namespace player2_sdk
         public UnityEvent OnListeningStopped;
 
         public bool Listening { get; private set; }
+        
+        /// <summary>
+        /// Check if the system is currently attempting to reconnect
+        /// </summary>
+        public bool IsReconnecting => reconnectionCoroutine != null;
         private IWebSocketConnection webSocket;
         private AudioClip microphoneClip;
         private string microphoneDevice;
@@ -147,6 +154,11 @@ namespace player2_sdk
         private WebGLMicrophoneManager webGLMicManager;
 #endif
         private CancellationTokenSource connectionCts;
+        
+        // Reconnection fields
+        private bool shouldBeListening = false;
+        private int reconnectionAttempts = 0;
+        private Coroutine reconnectionCoroutine;
 
 
 
@@ -157,7 +169,12 @@ namespace player2_sdk
         /// </summary>
         public void StartSTT()
         {
-            if (!sttEnabled || Listening) return;
+            if (!sttEnabled) return;
+            
+            shouldBeListening = true;
+            reconnectionAttempts = 0;
+            
+            if (Listening) return;
 
             if (!HasApiConnection())
             {
@@ -174,6 +191,14 @@ namespace player2_sdk
         /// </summary>
         public void StopSTT()
         {
+            shouldBeListening = false;
+            
+            if (reconnectionCoroutine != null)
+            {
+                StopCoroutine(reconnectionCoroutine);
+                reconnectionCoroutine = null;
+            }
+            
             if (!Listening) return;
 
             StopSTTInternal();
@@ -195,6 +220,14 @@ namespace player2_sdk
 
         private void OnDestroy()
         {
+            shouldBeListening = false;
+            
+            if (reconnectionCoroutine != null)
+            {
+                StopCoroutine(reconnectionCoroutine);
+                reconnectionCoroutine = null;
+            }
+            
             StopAllTimers();
             CloseWebSocket();
             StopMicrophone();
@@ -300,8 +333,14 @@ namespace player2_sdk
 
         private bool HasApiConnection()
         {
-            bool hasConnection = npcManager != null && !string.IsNullOrEmpty(npcManager.apiKey);
-            Debug.Log($"Player2STT: HasApiConnection check - npcManager: {npcManager != null}, apiKey: {!string.IsNullOrEmpty(npcManager?.apiKey)}, result: {hasConnection}");
+            bool hasManager = npcManager != null;
+            bool hasApiKey = !string.IsNullOrEmpty(npcManager?.apiKey);
+            bool skipAuth = hasManager && npcManager.ShouldSkipAuthentication();
+            
+            // Consider connected if we have API key OR if auth is bypassed for hosted scenarios
+            bool hasConnection = hasManager && (hasApiKey || skipAuth);
+            
+            Debug.Log($"Player2STT: HasApiConnection check - npcManager: {hasManager}, apiKey: {hasApiKey}, skipAuth: {skipAuth}, result: {hasConnection}");
             return hasConnection;
         }
 
@@ -317,11 +356,24 @@ namespace player2_sdk
         {
             if (sttEnabled)
             {
-                Debug.Log($"Player2STT: Starting STT. API key available: {!string.IsNullOrEmpty(npcManager?.apiKey)}");
-                if (!string.IsNullOrEmpty(npcManager?.apiKey))
+                bool hasApiKey = !string.IsNullOrEmpty(npcManager?.apiKey);
+                bool skipAuth = npcManager != null && npcManager.ShouldSkipAuthentication();
+                
+                Debug.Log($"Player2STT: Starting STT. API key available: {hasApiKey}, Skip auth (hosted): {skipAuth}");
+                
+                if (hasApiKey)
                 {
-                    Debug.Log($"Player2STT: API key starts with: {npcManager.apiKey.Substring(0, Math.Min(10, npcManager.apiKey.Length))}");
+                    Debug.Log("Player2STT: Using API key authentication");
                 }
+                else if (skipAuth)
+                {
+                    Debug.Log("Player2STT: Using hosted authentication (no API key required)");
+                }
+                else
+                {
+                    Debug.Log("Player2STT: No authentication method available");
+                }
+                
                 StartSTTWeb();
             }
         }
@@ -428,10 +480,16 @@ namespace player2_sdk
                 };
 
                 // Add token to query parameters (works for both WebGL and native)
+                // Skip token requirement for hosted scenarios where authentication is bypassed
+                bool skipAuth = npcManager.ShouldSkipAuthentication();
                 if (!string.IsNullOrEmpty(npcManager.apiKey))
                 {
                     queryParams.Add($"token={npcManager.apiKey}");
-                    Debug.Log($"Player2STT: Adding token to query params: {npcManager.apiKey.Substring(0, Math.Min(10, npcManager.apiKey.Length))}...");
+                    Debug.Log("Player2STT: Adding token to query params for authenticated connection");
+                }
+                else if (skipAuth)
+                {
+                    Debug.Log("Player2STT: Skipping token authentication for hosted scenario (player2.game domain)");
                 }
                 else
                 {
@@ -447,6 +505,11 @@ namespace player2_sdk
 #endif
 
                 webSocket.OnOpen += () => {
+                    Debug.Log("WebSocket connected successfully");
+                    
+                    // Reset reconnection attempts on successful connection
+                    reconnectionAttempts = 0;
+                    
                     SendSTTConfiguration();
                     if (heartbeatCoroutine != null)
                         StopCoroutine(heartbeatCoroutine);
@@ -475,16 +538,21 @@ namespace player2_sdk
 
                 webSocket.OnError += (error) => {
                     Debug.LogError($"WebSocket error: {error}");
-                    OnSTTFailed?.Invoke($"WebSocket error: {error}", -1);
-                    SetListening(false);
+                    HandleConnectionLoss($"WebSocket error: {error}", -1);
                 };
 
                 webSocket.OnClose += (closeCode) => {
-                    if (closeCode != WebSocketCloseCode.Normal)
+                    Debug.LogWarning($"WebSocket closed with code: {closeCode}");
+                    if (closeCode == WebSocketCloseCode.Normal)
                     {
-                        OnSTTFailed?.Invoke($"WebSocket closed with code: {closeCode}", (int)closeCode);
+                        // Normal closure - don't attempt reconnection
+                        SetListening(false);
                     }
-                    SetListening(false);
+                    else
+                    {
+                        // Abnormal closure - attempt reconnection
+                        HandleConnectionLoss($"WebSocket closed unexpectedly with code: {closeCode}", (int)closeCode);
+                    }
                 };
 
                 _ = webSocket.Connect();
@@ -685,7 +753,8 @@ namespace player2_sdk
                         int availableSamples = microphoneClip.samples - lastMicrophonePosition;
                         if (samplesToRead > availableSamples)
                         {
-                            Debug.LogWarning($"Player2STT: Attempting to read {samplesToRead} samples but only {availableSamples} available from position {lastMicrophonePosition}");
+                            Debug.LogWarning($"Player2STT: Attempting to read {samplesToRead} samples " +
+                                $"but only {availableSamples} available from position {lastMicrophonePosition}");
                             samplesToRead = availableSamples;
                             Array.Resize(ref audioData, samplesToRead);
                         }
@@ -700,7 +769,8 @@ namespace player2_sdk
                         if (firstPartLength < 0 || secondPartLength < 0 ||
                             firstPartLength + secondPartLength != samplesToRead)
                         {
-                            Debug.LogError($"Player2STT: Invalid wrap-around calculation. firstPart: {firstPartLength}, secondPart: {secondPartLength}, total: {samplesToRead}");
+                            Debug.LogError($"Player2STT: Invalid wrap-around calculation. " +
+                                $"firstPart: {firstPartLength}, secondPart: {secondPartLength}, total: {samplesToRead}");
                             return;
                         }
 
@@ -791,6 +861,113 @@ namespace player2_sdk
             currentTranscript = "";
             CloseWebSocket();
             SetListening(false);
+        }
+
+        private void HandleConnectionLoss(string errorMessage, int errorCode)
+        {
+            Debug.LogWarning($"Connection lost: {errorMessage}");
+            
+            // Stop current session but don't change shouldBeListening or audioStreamRunning
+            SetListening(false);
+            CloseWebSocket();
+            
+            // Stop microphone but keep audioStreamRunning flag for reconnection
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (webGLMicManager != null && webGLMicManager.IsRecording)
+            {
+                webGLMicManager.StopRecording();
+            }
+#else
+            if (Microphone.IsRecording(microphoneDevice))
+            {
+                Microphone.End(microphoneDevice);
+            }
+            
+            if (audioStreamCoroutine != null)
+            {
+                StopCoroutine(audioStreamCoroutine);
+                audioStreamCoroutine = null;
+            }
+#endif
+            
+            // Attempt reconnection if we should still be listening and auto-reconnection is enabled
+            if (shouldBeListening && enableAutoReconnection && reconnectionAttempts < maxReconnectionAttempts)
+            {
+                AttemptReconnection();
+            }
+            else if (shouldBeListening)
+            {
+                // Auto-reconnection disabled or max attempts reached
+                string reason = !enableAutoReconnection 
+                    ? "Auto-reconnection is disabled" 
+                    : $"Max reconnection attempts ({maxReconnectionAttempts}) reached";
+                    
+                Debug.LogError($"{reason}. Stopping STT.");
+                OnSTTFailed?.Invoke($"Connection failed: {reason}. {errorMessage}", errorCode);
+                shouldBeListening = false;
+                audioStreamRunning = false;
+                SetListening(false);
+            }
+            else
+            {
+                // User manually stopped, don't reconnect
+                OnSTTFailed?.Invoke(errorMessage, errorCode);
+            }
+        }
+
+        private void AttemptReconnection()
+        {
+            if (reconnectionCoroutine != null)
+            {
+                StopCoroutine(reconnectionCoroutine);
+            }
+            
+            reconnectionCoroutine = StartCoroutine(ReconnectionCoroutine());
+        }
+
+        private IEnumerator ReconnectionCoroutine()
+        {
+            reconnectionAttempts++;
+            float delay = baseReconnectionDelay * Mathf.Pow(2, reconnectionAttempts - 1); // Exponential backoff
+            delay = Mathf.Min(delay, 30f); // Cap at 30 seconds
+            
+            Debug.Log($"Attempting reconnection {reconnectionAttempts}/{maxReconnectionAttempts} in {delay:F1} seconds...");
+            
+            yield return new WaitForSeconds(delay);
+            
+            if (shouldBeListening && !Listening)
+            {
+                try
+                {
+                    Debug.Log($"Reconnection attempt {reconnectionAttempts}/{maxReconnectionAttempts}");
+                    
+                    // Use StartSTTWeb to ensure proper microphone restart
+                    StartSTTWeb();
+                    
+                    // Reset reconnection attempts on successful connection
+                    // (This will be confirmed when WebSocket.OnOpen is called)
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"Reconnection attempt {reconnectionAttempts} failed: {ex.Message}");
+                    
+                    if (reconnectionAttempts < maxReconnectionAttempts)
+                    {
+                        // Try again
+                        AttemptReconnection();
+                    }
+                    else
+                    {
+                        // Give up
+                        Debug.LogError($"All reconnection attempts failed. Stopping STT.");
+                        OnSTTFailed?.Invoke($"Failed to reconnect after {maxReconnectionAttempts} attempts", -1);
+                        shouldBeListening = false;
+                        SetListening(false);
+                    }
+                }
+            }
+            
+            reconnectionCoroutine = null;
         }
 
         private void FinalizeCurrentUtterance()
@@ -889,18 +1066,13 @@ namespace player2_sdk
         #endregion
 
         #region Custom
-
         public void CheckSTT()
         {
             statusText.text = "Equipping " + currentTranscript;
             upgradesHandler.CallUpgrade(currentTranscript);
         }
 
-
         #endregion
-
-
-
     }
 
     #region Data Classes
@@ -972,5 +1144,4 @@ namespace player2_sdk
     }
 
     #endregion
-    
 }

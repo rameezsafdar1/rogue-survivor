@@ -29,6 +29,11 @@ public class playerStats : MonoBehaviour, iDamagable
 
     public void takeDamage(float damage)
     {
+        if (EffectsManager.Instance.upgradesMenu.activeSelf)
+        {
+            return;
+        }
+
         health -= damage;
 
         float fillval = health / maxHealth;

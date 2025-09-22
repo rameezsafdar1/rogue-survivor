@@ -242,7 +242,6 @@ namespace player2_sdk
         {
             if (sttComponent != null)
             {
-                sttComponent.statusText.text = "Listening...";
                 SetButtonState(ButtonState.Connecting);
                 sttComponent.StartSTT();
             }

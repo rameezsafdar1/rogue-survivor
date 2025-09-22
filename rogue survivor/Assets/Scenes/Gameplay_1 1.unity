@@ -4767,7 +4767,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   clientId: 01990aff-e22d-7808-9018-1860ab2605d4
   TTS: 0
+  TTSStreaming: 1
   keep_game_state: 0
+  DebugDumpPayloads: 0
   functions: []
   functionHandler:
     m_PersistentCalls:
@@ -4777,6 +4779,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   NewApiKey:
+    m_PersistentCalls:
+      m_Calls: []
+  apiTokenReady:
     m_PersistentCalls:
       m_Calls: []
 --- !u!4 &159204634
@@ -4807,6 +4812,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::player2_sdk.Player2NpcResponseListener
   _baseUrl: 
+  _enableTtsStreaming: 0
+  _debugDumpPayloads: 0
   _reconnectDelay: 2
   _maxReconnectAttempts: 5
   newApiKey:
@@ -7403,7 +7410,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 210, y: -384}
+  m_AnchoredPosition: {x: 210, y: -471.99994}
   m_SizeDelta: {x: 80, y: 80}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &243779621
@@ -7481,7 +7488,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: -210, y: -384}
+  m_AnchoredPosition: {x: -210, y: -472}
   m_SizeDelta: {x: 80, y: 80}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &246864216
@@ -77240,6 +77247,9 @@ MonoBehaviour:
   heartbeatInterval: 5
   enableVAD: 0
   enableInterimResults: 0
+  enableAutoReconnection: 1
+  maxReconnectionAttempts: 5
+  baseReconnectionDelay: 1
   sampleRate: 44100
   audioChunkDurationMs: 50
   npcManager: {fileID: 159204633}
@@ -89176,7 +89186,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: -384}
+  m_AnchoredPosition: {x: 0, y: -471.99994}
   m_SizeDelta: {x: 80, y: 80}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &2027483213

@@ -26,7 +26,7 @@ public class UpgradesSTT : MonoBehaviour
                 return;
             }
 
-            if (normalized.Contains("blades"))
+            if (normalized.Contains("blade"))
             {
                 upgradesManager.updateBlade();
                 upgradesPanel.SetActive(false);
@@ -65,7 +65,7 @@ public class UpgradesSTT : MonoBehaviour
             {
             "Boss, I could not find ",
             "Are you sure you want ",
-            "Pay attention to the game, why do you need ",
+            "I dont have a ",
             "Nope, not seeing any "
             };
 

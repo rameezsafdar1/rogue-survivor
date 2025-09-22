@@ -1,7 +1,5 @@
 namespace player2_sdk
 {
-
-
     using System;
     using System.Collections.Generic;
     using System.Text;
@@ -38,27 +36,39 @@ namespace player2_sdk
         public string sender_name;
         public string sender_message;
         [CanBeNull] public string game_state_info;
-            [CanBeNull] public string tts; // Nullable by convention / attribute
+        [CanBeNull] public string tts; // Nullable by convention / attribute
     }
 
     public class Player2Npc : MonoBehaviour
     {
-        [Header("State Config")] [SerializeField]
+        [Header("State Config")]
+        [SerializeField]
         private NpcManager npcManager;
 
-        [Header("NPC Configuration")] [SerializeField]
+        [Header("NPC Configuration")]
+        [SerializeField]
         private string shortName = "Victor";
 
         [SerializeField] private string fullName = "Victor J. Johnson";
+
         [Tooltip("A description of the NPC, written in first person, used for the LLM to understand the character better.")]
         [SerializeField] private string characterDescription = "I am crazed scientist on the hunt for gold!";
+
         [Tooltip("The system prompt should be written the third person, describing the NPC's personality and behavior.")]
         [SerializeField] private string systemPrompt = "Victor is a scientist obsessed with finding gold.";
+
+        // Use the TTSVoice attribute in Editor for dropdown functionality
+#if UNITY_EDITOR
+        [Tooltip("The voice ID to use for TTS. Click 'Fetch' to load available voices from Player2 App.")]
+        [TTSVoice]
+        [SerializeField] public string voiceId;
+#else
         [Tooltip("The voice ID to use for TTS. Can be found at localhost:4315/v1/tts/voices")]
-        [SerializeField] public string voiceId = "01955d76-ed5b-7451-92d6-5ef579d3ed28";
+        [SerializeField] public string voiceId;
+#endif
 
-
-        [Header("Events")] [SerializeField] private TMP_InputField inputField;
+        [Header("Events")]
+        [SerializeField] private TMP_InputField inputField;
         [SerializeField] private TextMeshProUGUI outputMessage;
 
         [Header("Debugging")]
@@ -106,7 +116,36 @@ namespace player2_sdk
             {
                 Debug.LogWarning("InputField not assigned on Player2Npc; chat input disabled.", this);
             }
+
+            // Auto-fetch voices in Editor on first load
+#if UNITY_EDITOR
+            AutoFetchVoicesInEditor();
+#endif
         }
+
+#if UNITY_EDITOR
+        private void AutoFetchVoicesInEditor()
+        {
+            // Only auto-fetch if we haven't cached voices yet
+            if (TTSVoiceManager.CachedVoices == null && !TTSVoiceManager.IsFetching)
+            {
+                TTSVoiceManager.FetchVoices((voices) =>
+                {
+                    if (voices != null && voices.voices != null && voices.voices.Count > 0)
+                    {
+                        Debug.Log($"Player2Npc: Auto-fetched {voices.voices.Count} TTS voices");
+
+                        // If the current voiceId is the default one and we have voices available,
+                        // you could optionally set it to the first available voice
+                        if (string.IsNullOrEmpty(voiceId) || voiceId == "01955d76-ed5b-7451-92d6-5ef579d3ed28")
+                        {
+                            voiceId = voices.voices[0].id;
+                        }
+                    }
+                });
+            }
+        }
+#endif
 
         private void OnChatMessageSubmitted(string message)
         {
@@ -115,6 +154,29 @@ namespace player2_sdk
 
         private async Awaitable SpawnNpcAsync()
         {
+            if (npcManager == null)
+            {
+                Debug.LogError("Player2Npc.SpawnNpcAsync called but npcManager is NOT assigned. Aborting spawn.");
+                return;
+            }
+
+            // Ensure we have a valid API key before attempting to spawn (unless auth is bypassed for hosted scenarios)
+            if (string.IsNullOrEmpty(npcManager.apiKey) && !npcManager.ShouldSkipAuthentication())
+            {
+                Debug.LogError($"Cannot spawn NPC '{fullName}': No API key available. Please ensure authentication is completed first.");
+                return;
+            }
+
+            if (npcManager.ShouldSkipAuthentication())
+            {
+                Debug.Log($"Spawning NPC '{fullName}' in hosted mode (no API key required)");
+            }
+            else
+            {
+                Debug.Log($"Spawning NPC '{fullName}' with API key authentication");
+            }
+
+            Debug.Log($"Spawning NPC '{fullName}' with voice ID: {voiceId}");
 
             var spawnData = new SpawnNpc
             {
@@ -132,12 +194,6 @@ namespace player2_sdk
                 keep_game_state = npcManager.keep_game_state
             };
 
-            if (npcManager == null)
-            {
-                Debug.LogError("Player2Npc.SpawnNpcAsync called but npcManager is NOT assigned. Aborting spawn.");
-                return;
-            }
-
             string url = $"{npcManager.GetBaseUrl()}/npcs/spawn";
             Debug.Log($"Spawning NPC at URL: {url}");
 
@@ -147,7 +203,18 @@ namespace player2_sdk
             using var request = new UnityWebRequest(url, "POST");
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Authorization", $"Bearer {npcManager.apiKey}");
+
+            // Skip authentication if running on player2.game domain (cookies will handle auth)
+            if (!npcManager.ShouldSkipAuthentication())
+            {
+                Debug.Log("Setting Authorization header with API key");
+                request.SetRequestHeader("Authorization", $"Bearer {npcManager.apiKey}");
+            }
+            else
+            {
+                Debug.Log("Skipping Authorization header (WebGL on player2.game domain - using cookies for auth)");
+            }
+
             request.SetRequestHeader("Content-Type", "application/json");
             request.SetRequestHeader("Accept", "application/json");
 
@@ -180,7 +247,6 @@ namespace player2_sdk
                 Debug.LogError(error);
             }
         }
-
 
         private async Awaitable SendChatMessageAsync(string message)
         {
@@ -220,14 +286,22 @@ namespace player2_sdk
 
         private async Awaitable SendChatRequestAsync(ChatRequest chatRequest)
         {
-            if (npcManager.TTS)
-            {
-                chatRequest.tts = "server";
-            }
             if (npcManager == null)
             {
                 Debug.LogError("Cannot send chat request because npcManager is null.");
                 return;
+            }
+
+            // Ensure we have a valid API key before attempting to send chat (unless auth is bypassed for hosted scenarios)
+            if (string.IsNullOrEmpty(npcManager.apiKey) && !npcManager.ShouldSkipAuthentication())
+            {
+                Debug.LogError($"Cannot send chat message: No API key available. Please ensure authentication is completed first.");
+                return;
+            }
+
+            if (npcManager.TTS)
+            {
+                chatRequest.tts = "server";
             }
             string url = $"{npcManager.GetBaseUrl()}/npcs/{_npcID}/chat";
             string json = JsonConvert.SerializeObject(chatRequest, npcManager.JsonSerializerSettings);
@@ -236,7 +310,13 @@ namespace player2_sdk
             using var request = new UnityWebRequest(url, "POST");
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Authorization", $"Bearer {npcManager.apiKey}");
+
+            // Skip authentication if running on player2.game domain (cookies will handle auth)
+            if (!npcManager.ShouldSkipAuthentication())
+            {
+                request.SetRequestHeader("Authorization", $"Bearer {npcManager.apiKey}");
+            }
+
             request.SetRequestHeader("Content-Type", "application/json");
 
             if (!string.IsNullOrEmpty(customTraceId))

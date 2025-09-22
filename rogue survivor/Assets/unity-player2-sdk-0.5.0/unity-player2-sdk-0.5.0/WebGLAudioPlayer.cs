@@ -47,6 +47,7 @@ namespace player2_sdk
                 yield break;
             }
 
+
             // Additional validation: check for valid base64 characters
             if (!IsValidBase64String(base64String))
             {
@@ -57,12 +58,17 @@ namespace player2_sdk
             byte[] audioBytes;
             try
             {
+                // Fix Base64 padding if needed
+                string paddedBase64 = FixBase64Padding(base64String);
+                
                 // Decode to bytes
-                audioBytes = Convert.FromBase64String(base64String);
+                audioBytes = Convert.FromBase64String(paddedBase64);
             }
             catch (FormatException ex)
             {
-                Debug.LogError($"Cannot play audio for {identifier}: Base64 decoding failed: {ex.Message}");
+                // Log additional context for Base64 decoding failures
+                string base64Preview = base64String.Length > 50 ? base64String.Substring(0, 50) + "..." : base64String;
+                Debug.LogError($"Cannot play audio for {identifier}: Base64 decoding failed: {ex.Message}. Base64 data length: {base64String.Length}, Preview: {base64Preview}");
                 yield break;
             }
 
@@ -157,6 +163,13 @@ namespace player2_sdk
         /// </summary>
         private void PlayAudioWithJavaScript(string identifier, string base64Audio, AudioSource audioSource)
         {
+            // Stop Unity AudioSource to prevent duplicate playback with JavaScript
+            if (audioSource != null)
+            {
+                audioSource.Stop();
+                audioSource.clip = null;
+            }
+            
             PlayWebGLAudio(identifier, base64Audio);
         }
 
@@ -172,6 +185,26 @@ namespace player2_sdk
                 floats[i] = sample / 32768f; // Convert to -1.0 to 1.0 range
             }
             return floats;
+        }
+
+        /// <summary>
+        /// Fixes Base64 padding by adding missing = characters if needed
+        /// </summary>
+        private string FixBase64Padding(string base64String)
+        {
+            if (string.IsNullOrEmpty(base64String))
+                return base64String;
+
+            // Base64 strings must be divisible by 4
+            int missingPadding = 4 - (base64String.Length % 4);
+            
+            if (missingPadding != 4) // Only add padding if needed
+            {
+                base64String = base64String + new string('=', missingPadding);
+                Debug.Log($"Fixed Base64 padding by adding {missingPadding} character(s)");
+            }
+
+            return base64String;
         }
 
         /// <summary>
