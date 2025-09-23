@@ -74,16 +74,16 @@ public class EffectsManager : MonoBehaviour
         }
 
         freezeCoolDown += Time.deltaTime;
-        freezeCoolFill.fillAmount = freezeCoolDown / 15;
+        freezeCoolFill.fillAmount = freezeCoolDown / 20;
 
         chaosCoolDown += Time.deltaTime;
-        chaosCoolFill.fillAmount = chaosCoolDown / 15;
+        chaosCoolFill.fillAmount = chaosCoolDown / 30;
 
     }
 
     public void Freeze()
     {
-        if (freezeCoolDown < 15)
+        if (freezeCoolDown < 20)
         {
             upgradeManager.PerkFail("Freeze cooldown not complete");
             return;
@@ -95,7 +95,7 @@ public class EffectsManager : MonoBehaviour
 
     public void Chaos()
     {
-        if (chaosCoolDown < 15)
+        if (chaosCoolDown < 30)
         {
             upgradeManager.PerkFail("Chaos cooldown not complete");
             return;

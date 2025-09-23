@@ -24,7 +24,7 @@ public class playerStats : MonoBehaviour, iDamagable
     private void Update()
     {
         healTimer += Time.deltaTime;        
-        healFill.fillAmount = healTimer / 15f;
+        healFill.fillAmount = healTimer / 30f;
     }
 
     public void takeDamage(float damage)
@@ -69,7 +69,7 @@ public class playerStats : MonoBehaviour, iDamagable
 
     public void HealComplete()
     {
-        if (healTimer < 15)
+        if (healTimer < 30)
         {
             upgradeManager.PerkFail("Heal cooldown not complete");
             return;

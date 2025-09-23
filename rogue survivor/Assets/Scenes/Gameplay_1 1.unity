@@ -46780,7 +46780,7 @@ MonoBehaviour:
   upgradesMenu: {fileID: 1578869300}
   scene: 0
   Splash: {fileID: 1205703543}
-  frozenDuration: 30
+  frozenDuration: 10
   frozen: 0
   upgradeManager: {fileID: 1218192699}
   freezeCoolDown: 0
